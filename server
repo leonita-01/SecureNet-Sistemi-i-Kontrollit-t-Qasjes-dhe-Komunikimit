@@ -2,87 +2,103 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 
-class Server
+namespace TCP
 {
-    static TcpListener tcpListener;
-    static Thread listenerThread;
-
-    static void Main(string[] args)
+    public partial class ServerForm : Form
     {
-        // Vendosja e IP adresës dhe numrit të portit
-        IPAddress ipAddress = IPAddress.Parse("127.0.0.1"); // Mund ta ndryshoni me IP-in tuaj
-        int port = 12345; // Mund ta ndryshoni me portin tuaj të preferuar
+        TcpListener tcpListener;
+        TcpClient tcpClient;
 
-        tcpListener = new TcpListener(ipAddress, port);
-        listenerThread = new Thread(new ThreadStart(ListenForClients));
-        listenerThread.Start();
-    }
-
-    private static void ListenForClients()
-    {
-        tcpListener.Start();
-
-        Console.WriteLine("Serveri është në pritje për lidhje...");
-
-        while (true)
+        public ServerForm()
         {
-            // Blokonohet derisa një klient lidhet
-            TcpClient client = tcpListener.AcceptTcpClient();
-
-            // Krijimi i një thread të ri për të përpunuar kërkesat e klientit
-            Thread clientThread = new Thread(new ParameterizedThreadStart(HandleClientComm));
-            clientThread.Start(client);
-        }
-    }
-
-    private static void HandleClientComm(object clientObj)
-    {
-        TcpClient tcpClient = (TcpClient)clientObj;
-        NetworkStream clientStream = tcpClient.GetStream();
-
-        byte[] message = new byte[4096];
-        int bytesRead;
-
-        while (true)
-        {
-            bytesRead = 0;
-
-            try
-            {
-                // Lexo mesazhin nga klienti
-                bytesRead = clientStream.Read(message, 0, 4096);
-            }
-            catch
-            {
-                break;
-            }
-
-            if (bytesRead == 0)
-                break;
-
-            // Përpuno mesazhin
-            string clientMessage = Encoding.ASCII.GetString(message, 0, bytesRead);
-            Console.WriteLine("Mesazhi nga klienti: " + clientMessage);
-
-            // Këtu mund të shtoni logjikën për të përpunuar kërkesat e klientit
-            // Për shembull, mund të ekzekutoni komandat për qasje në folderat/file-t
-            // dhe të dërgoni përgjigje mbrapa në klient
-
-            // Për shembull:
-            // string response = ExecuteCommand(clientMessage);
-            // byte[] data = Encoding.ASCII.GetBytes(response);
-            // clientStream.Write(data, 0, data.Length);
+            InitializeComponent();
         }
 
-        tcpClient.Close();
-    }
+        private async void btnStartServer_Click(object sender, EventArgs e)
+        {
+            int port = int.Parse(txtServerPort.Text);
+            tcpListener = new TcpListener(IPAddress.Any, port);
 
-    // Shembull i një metode për ekzekutimin e komandave
-    private static string ExecuteCommand(string command)
-    {
-        // Implementoni logjikën tuaj për ekzekutimin e komandave këtu
-        return "Përgjigje nga serveri: Komanda u ekzekutua me sukses!";
+            // Start listening for incoming connections asynchronously
+            tcpListener.Start();
+            WriteLog($"Server started on port {port}");
+
+            // Accept incoming connections in a loop
+            while (true)
+            {
+                try
+                {
+                    tcpClient = await tcpListener.AcceptTcpClientAsync();
+
+                    // Handle the accepted client in a separate method
+                    Task.Run(() => HandleClient(tcpClient));
+                }
+                catch (Exception ex)
+                {
+                    // Handle exceptions
+                    WriteLog($"Error: {ex.Message}");
+                }
+            }
+        }
+
+        private async Task HandleClient(TcpClient client)
+        {
+            // Get the stream for reading and writing data
+            NetworkStream stream = client.GetStream();
+
+            // Buffer for receiving data
+            byte[] buffer = new byte[1024];
+
+            while (true)
+            {
+                try
+                {
+                    // Read incoming data
+                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+
+                    if (bytesRead == 0)
+                    {
+                        // Connection closed by the client
+                        break;
+                    }
+
+                    // Convert the received bytes to a string
+                    string receivedMessage = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+
+                    // Handle the received message
+                    HandleMessage(receivedMessage);
+
+                    // Log the received message
+                    WriteLog($"Received: {receivedMessage}");
+                }
+                catch (Exception ex)
+                {
+                    // Handle exceptions
+                    WriteLog($"Error: {ex.Message}");
+                    break;
+                }
+            }
+
+            // Clean up the client connection
+            client.Close();
+        }
+
+        private void HandleMessage(string message)
+        {
+            // Implement your logic to handle the received message here
+        }
+
+        private void WriteLog(string msg)
+        {
+            MethodInvoker invoker = new MethodInvoker(delegate
+            {
+                txtLog.Text += $"Server Response: {msg}{Environment.NewLine}";
+            });
+
+            this.BeginInvoke(invoker);
+        }
     }
 }
