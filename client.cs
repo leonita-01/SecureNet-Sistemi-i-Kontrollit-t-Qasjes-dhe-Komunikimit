@@ -18,5 +18,9 @@ amespace MultiClient
             RequestLoop();
             Exit();
         }
+          private static void ConnectToServer(){}
+             private static void RequestLoop(){}
+              private static void Exit(){}
     }
+
 }
