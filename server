@@ -1,104 +1,142 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-
-namespace TCP
+using System.Diagnostics;
+namespace MultiServer
 {
-    public partial class ServerForm : Form
+    class Program
     {
-        TcpListener tcpListener;
-        TcpClient tcpClient;
-
-        public ServerForm()
+        private static readonly Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        private static readonly List<Socket> clientSockets = new List<Socket>();
+        private const int BUFFER_SIZE = 2048;
+        private const int PORT = 100;
+        private static readonly byte[] buffer = new byte[BUFFER_SIZE];
+        static void Main()
         {
-            InitializeComponent();
+            Console.Title = "Server";
+            SetupServer();
+            Console.ReadLine(); // When we press enter close everything
+            CloseAllSockets();
         }
-
-        private async void btnStartServer_Click(object sender, EventArgs e)
+        private static void SetupServer()
         {
-            int port = int.Parse(txtServerPort.Text);
-            tcpListener = new TcpListener(IPAddress.Any, port);
-
-            // Start listening for incoming connections asynchronously
-            tcpListener.Start();
-            WriteLog($"Server started on port {port}");
-
-            // Accept incoming connections in a loop
-            while (true)
+            IPAddress myIP = IPAddress.Parse("127.1.0.1");
+            Console.WriteLine("Setting up server...");
+            serverSocket.Bind(new IPEndPoint(myIP, PORT));
+            serverSocket.Listen(0);
+            serverSocket.BeginAccept(AcceptCallback, null);
+            Console.WriteLine("Server setup complete");
+        }
+        /// <summary>
+        /// Close all connected client (we do not need to shutdown the server socket as its connections
+        /// are already closed with the clients).
+        /// </summary>
+        private static void CloseAllSockets()
+        {
+            foreach (Socket socket in clientSockets)
             {
-                try
-                {
-                    tcpClient = await tcpListener.AcceptTcpClientAsync();
-
-                    // Handle the accepted client in a separate method
-                    Task.Run(() => HandleClient(tcpClient));
-                }
-                catch (Exception ex)
-                {
-                    // Handle exceptions
-                    WriteLog($"Error: {ex.Message}");
-                }
+                socket.Shutdown(SocketShutdown.Both);
+                socket.Close();
             }
+            serverSocket.Close();
         }
-
-        private async Task HandleClient(TcpClient client)
+        private static void AcceptCallback(IAsyncResult AR)
         {
-            // Get the stream for reading and writing data
-            NetworkStream stream = client.GetStream();
-
-            // Buffer for receiving data
-            byte[] buffer = new byte[1024];
-
-            while (true)
+            Socket socket;
+            try
             {
-                try
-                {
-                    // Read incoming data
-                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-
-                    if (bytesRead == 0)
-                    {
-                        // Connection closed by the client
-                        break;
-                    }
-
-                    // Convert the received bytes to a string
-                    string receivedMessage = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-
-                    // Handle the received message
-                    HandleMessage(receivedMessage);
-
-                    // Log the received message
-                    WriteLog($"Received: {receivedMessage}");
-                }
-                catch (Exception ex)
-                {
-                    // Handle exceptions
-                    WriteLog($"Error: {ex.Message}");
-                    break;
-                }
+                socket = serverSocket.EndAccept(AR);
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+            clientSockets.Add(socket);
+            socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, socket);
+            Console.WriteLine("Client connected, waiting for request...");
+            serverSocket.BeginAccept(AcceptCallback, null);
+        }
+        private static void ReceiveCallback(IAsyncResult AR)
+        {
+            Socket current = (Socket)AR.AsyncState;
+            int received;
+            try
+            {
+                received = current.EndReceive(AR);
+            }
+            catch (SocketException)
+            {
+                Console.WriteLine("Client forcefully disconnected");
+                // Don't shutdown because the socket may be disposed and its disconnected anyway.
+                current.Close();
+                clientSockets.Remove(current);
+                return;
             }
 
-            // Clean up the client connection
-            client.Close();
-        }
 
-        private void HandleMessage(string message)
-        {
-            // Implement your logic to handle the received message here
-        }
+            byte[] recBuf = new byte[received];
+            Array.Copy(buffer, recBuf, received);
+            string text = Encoding.ASCII.GetString(recBuf);
+            Console.WriteLine("Received Text: " + text);
 
-        private void WriteLog(string msg)
-        {
-            MethodInvoker invoker = new MethodInvoker(delegate
+
+
+
+            if (text.ToLower() == "get time") // Client requested time
             {
-                txtLog.Text += $"Server Response: {msg}{Environment.NewLine}";
-            });
+                Console.WriteLine("Text is a get time request");
+                byte[] data = Encoding.ASCII.GetBytes(DateTime.Now.ToLongTimeString());
+                current.Send(data);
+                Console.WriteLine("Time sent to client");
+            }
 
-            this.BeginInvoke(invoker);
-        }
-    }
-}
+            else if (text.ToLower() == "ooop create file") // client wants to create file
+            {
+                Console.WriteLine("Text is a create file request");
+                string path = @"C:\Users\jupol\OneDrive\Desktop\projekti rrjeta";
+                using (FileStream fs = File.Create(path)) ;
+                byte[] data = Encoding.ASCII.GetBytes("The file has been created");
+                current.Send(data);
+            }
+
+            else if (text.ToLower() == "ooop delete file") // client wants to delete file
+            {
+                Console.WriteLine("Text is a delete file request");
+                string path = @"C:\Users\jupol\OneDrive\Desktop\projekti rrjeta";
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                    byte[] data = Encoding.ASCII.GetBytes("The file has been deleted");
+                    current.Send(data);
+                }
+            }
+            else if (text.Contains("read") == true) //any client can read file
+            {
+                Console.WriteLine("Text is a read file request");
+                string text1 = System.IO.File.ReadAllText(@"C:\Users\jupol\OneDrive\Desktop\projekti rrjeta");
+                byte[] data1 = Encoding.ASCII.GetBytes(text1);
+                current.Send(data1);
+            }
+            else if (text.ToLower() == "ooop write file") //client wants to write file
+            {
+                Console.WriteLine("Text is a write file request");
+                string createText = "Hello and Welcome" + Environment.NewLine;
+                File.WriteAllText(@"C:\Users\jupol\OneDrive\Desktop\projekti rrjeta", createText);
+                byte[] data2 = Encoding.ASCII.GetBytes(createText);
+                current.Send(data2);
+            }
+            else if (text.ToLower() == "ooop open file")
+            {
+                Console.WriteLine("Text is a open file request");
+                Process p = new Process();
+                ProcessStartInfo pi = new ProcessStartInfo();
+                pi.UseShellExecute = true;
+                pi.FileName = @"C:\Users\jupol\OneDrive\Desktop\projekti rrjeta";
+                p.StartInfo = pi;
+                try
+                {
+                    p.Start();
+                }
+     
