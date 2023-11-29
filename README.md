@@ -1,2 +1,2 @@
-# SecureNet-Sistemi-i-Kontrollit-t-Qasjes-dhe-Komunikimit
+# Socket programming TCP protocol
 Programming Language C#
