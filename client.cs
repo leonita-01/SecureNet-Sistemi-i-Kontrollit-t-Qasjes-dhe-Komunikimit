@@ -18,8 +18,43 @@ amespace MultiClient
             RequestLoop();
             Exit();
         }
-          private static void ConnectToServer(){}
-             private static void RequestLoop(){}
+          private static void ConnectToServer(){
+
+             int attempts = 0;
+             IPAddress myIP = IPAddress.Parse("127.1.0.1");
+
+      while (!ClientSocket.Connected)
+      {
+          try
+          {
+              attempts++;
+              Console.WriteLine("Connection attempt " + attempts);
+
+              ClientSocket.Connect(myIP, PORT);
+          }
+          catch (SocketException)
+          {
+              Console.Clear();
+          }
+      }
+
+      Console.Clear();
+      Console.WriteLine("Connected");
+  }
+  private static void RequestLoop()
+  {
+      Console.WriteLine(@"<Type ""exit"" to properly disconnect client>");
+
+      while (true)
+      {
+          SendRequest();
+          ReceiveResponse();
+      }
+
+
+
+          }
+            
               private static void Exit(){}
     }
 
