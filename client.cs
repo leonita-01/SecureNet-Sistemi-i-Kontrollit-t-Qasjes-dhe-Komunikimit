@@ -77,6 +77,21 @@ amespace MultiClient
         /// <summary>
         /// Sends a string to the server with ASCII encoding.
         /// </summary>
+        private static void SendString(string text)
+        {
+            byte[] buffer = Encoding.ASCII.GetBytes(text);
+            ClientSocket.Send(buffer, 0, buffer.Length, SocketFlags.None);
+        }
 
+        private static void ReceiveResponse()
+        {
+            var buffer = new byte[2048];
+            int received = ClientSocket.Receive(buffer, SocketFlags.None);
+            if (received == 0) return;
+            var data = new byte[received];
+            Array.Copy(buffer, data, received);
+            string text = Encoding.ASCII.GetString(data);
+            Console.WriteLine(text);
+        }
     }
 }
