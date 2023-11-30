@@ -54,8 +54,29 @@ amespace MultiClient
 
 
           }
-            
-              private static void Exit(){}
-    }
+                    private static void Exit()
+        {
+            SendString("exit"); // Tell the server we are exiting
+            ClientSocket.Shutdown(SocketShutdown.Both);
+            ClientSocket.Close();
+            Environment.Exit(0);
+        }
 
+        private static void SendRequest()
+        {
+            Console.Write("Type your username and command: ");
+            string request = Console.ReadLine();
+            SendString(request);
+
+            if (request.ToLower() == "exit")
+            {
+                Exit();
+            }
+        }
+
+        /// <summary>
+        /// Sends a string to the server with ASCII encoding.
+        /// </summary>
+
+    }
 }
